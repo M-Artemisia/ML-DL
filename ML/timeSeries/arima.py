@@ -484,10 +484,10 @@ def finalize_model(data, interval=1,arima_order=(1,0,0), bias=0,
 # Step1: Load And Analyse data     
 #path = "datasets/monthly_champagne_sales.csv"
 #path = "datasets/filtered_sample_output.csv"
-
-
-
-
+path = "datasets/filtered_train_data.csv"
+data = pd.read_csv(path)
+print(data.info())
+series = load_data(path)
 #plot_simple(series)
 #plot_sesonalDecompose(series)
 #plot_lag_correlation(series,1)
