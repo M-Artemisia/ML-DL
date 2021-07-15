@@ -1,185 +1,131 @@
 # -*- coding: utf-8 -*-
 """
-Created on Tue Jul 28 14:15:02 2020
-Ref: https://medium.com/datadriveninvestor/time-series-prediction-using-sarimax-a6604f258c56
-https://github.com/arshren/TimeSeries/blob/master/Stock%20Price%20APPL.ipynb
+Created on Tue Jul 28 10:39:15 2020
 @author: Mali
+Ref: https://towardsdatascience.com/how-to-forecast-sales-with-python-using-sarima-model-ba600992fa7d
+
 """
-import pandas as pd
+import itertools 
+import statsmodels.api as sm 
+import warnings
 import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
-from pandas.plotting import register_matplotlib_converters
-register_matplotlib_converters()
-#%matplotlib inline
+warnings.filterwarnings("ignore")
+plt.style.use('fivethirtyeight')
+import pandas as pd
+import matplotlib
+matplotlib.rcParams['axes.labelsize'] = 14
+matplotlib.rcParams['xtick.labelsize'] = 12
+matplotlib.rcParams['ytick.labelsize'] = 12
+matplotlib.rcParams['text.color'] = 'G'
 
-dataset= pd.read_csv('datasets/AAPL.csv')
-dataset.head(2)
-dataset.info()
+def hyperparamTunning_sarimax(series, pdq, seasonal_pdq ):
+    best_cfg = {"pdq":(0,0,0),"seasonal_pdq":(0,0,0,12)}
+    best_aic =  float("inf")
+    for param in pdq:
+        for param_seasonal in seasonal_pdq:
+            try:
+                model = sm.tsa.statespace.SARIMAX(series,
+                                                order=param,
+                                                seasonal_order=param_seasonal,
+                                                enforce_stationarity=False,
+                                                enforce_invertibility=False)
+                results = model.fit()
+                print('ARIMA{}x{} - AIC:{}'.format(param,param_seasonal,results.aic))
+                if results.aic < best_aic :
+                          best_aic = results.aic
+                          best_cfg ['pdq'] = param
+                          best_cfg['seasonal_pdq'] = param_seasonal
+            except: 
+                continue
+    return best_cfg, best_aic
+            
+# Load Data
+path = "datasets/monthly_champagne_sales.csv"
+series = pd.read_csv(path, header=0, parse_dates=True, index_col=0, squeeze=True)
+print('Series length=%d' % len(series))
+print ('5 first lines of data:\n', series.head(2))
 
-# data prepare
-dataset['Mean'] = (dataset['Low'] + dataset['High'])/2
-dataset.head(2)
+# Hyper param Tunning
+p = d = q = range(0, 2)
+pdq = list(itertools.product(p, d, q))
+seasonal_pdq = [(x[0], x[1], x[2], 12) for x in list(itertools.product(p, d, q))]
+print('Examples of parameter for SARIMA...')
+print('SARIMAX: {} x {}'.format(pdq[1], seasonal_pdq[1]))
+print('SARIMAX: {} x {}'.format(pdq[1], seasonal_pdq[2]))
+print('SARIMAX: {} x {}'.format(pdq[2], seasonal_pdq[3]))
+print('SARIMAX: {} x {}'.format(pdq[2], seasonal_pdq[4]))
 
-# prediction based on X steps previous
-steps=-1
-dataset_for_prediction= dataset.copy()
-dataset_for_prediction['Actual']=dataset_for_prediction['Mean'].shift(steps)
-dataset_for_prediction.head(3)
+#best_cfg, best_aic = hyperparamTunning_sarimax(series, pdq, seasonal_pdq)    
+best_cfg = {'pdq': (0, 1, 1), 'seasonal_pdq':(1, 1, 1, 12)}
+best_aic = float(1259.9425546033115)
+print('The Best SARIMA{}x{} - AIC:{}'.format(best_cfg['pdq'], best_cfg['seasonal_pdq'],
+                                     best_aic))
 
-# Dropping columns with null values
-dataset_for_prediction=dataset_for_prediction.dropna()
-
-# Creating Date as the index of the DataFrame
-dataset_for_prediction['Date'] = pd.to_datetime(dataset_for_prediction['Date'])
-dataset_for_prediction.index= dataset_for_prediction['Date']
-
-# Plot the mean stock prices for the current day 
-dataset_for_prediction['Mean'].plot(color='green', figsize=(15,2))
-plt.legend(['Next day value', 'Mean'])
-plt.title('Tyson Opening Stock Value')
-
-# Plotting volume of Apple stocks sold daily
-dataset_for_prediction['Volume'].plot(color='blue', figsize=(15,2))
-plt.title('Apple Stock Volume')
-
-# Normalizing the input and target features
-"""
-Since the stock prices and volume are on different scale, 
-we need to normalize the data. 
-We use MinMaxScaler, it will scale the data to a fixed range between 0 to 1
-Scaling the input features- Low, High, Open, Close, Volume, Adjusted Close and Mean
-"""
-from sklearn.preprocessing import MinMaxScaler
-sc_in = MinMaxScaler(feature_range=(0, 1))
-scaled_input = sc_in.fit_transform(dataset_for_prediction[
-    ['Low', 'High','Open', 'Close', 'Volume', 'Adj Close', 'Mean']])
-scaled_input =pd.DataFrame(scaled_input)
-X= scaled_input
-
-"""
-Scaling the output features - Actual. 
-We are using a different instance of MinMaxScaler here. 
-This will allow us to perform inverse transform the predicted stock prices later easily.
-"""
-sc_out = MinMaxScaler(feature_range=(0, 1))
-scaler_output = sc_out.fit_transform(dataset_for_prediction[['Actual']])
-scaler_output =pd.DataFrame(scaler_output)
-y=scaler_output
-
-X.rename(columns={0:'Low', 1:'High', 2:'Open', 
-                  3:'Close', 4:'Volume', 5:'Adj Close', 
-                  6:'Mean'}, inplace=True)
-X.head(2)
-
-y.rename(columns={0:'Stock Price next day'}, inplace= True)
-y.index=dataset_for_prediction.index
-y.head(2)
-
-
-# Splitting the data into training and test set
-# training set will be 70% and test set will be 30% of the entire data set
-train_size=int(len(dataset) *0.7)
-test_size = int(len(dataset)) - train_size
-train_X, train_y = X[:train_size].dropna(), y[:train_size].dropna()
-test_X, test_y = X[train_size:].dropna(), y[train_size:].dropna()
-
-
-
-# Understanding the Time series data
-import statsmodels.api as sm
-seas_d=sm.tsa.seasonal_decompose(X['Mean'],model='add',freq=365);
-fig=seas_d.plot()
-fig.set_figheight(4)
+# Running the best model
+model = sm.tsa.statespace.SARIMAX(series,
+                                order=best_cfg['pdq'],
+                                seasonal_order=best_cfg['seasonal_pdq'],
+                                enforce_stationarity=False,
+                                enforce_invertibility=False)
+results = model.fit()
+print(results.summary().tables[1])
+results.plot_diagnostics(figsize=(18, 8))
 plt.show()
 
 
-# Check Stationary:
-from statsmodels.tsa.stattools import adfuller
-def test_adf(series, title=''):
-    dfout={}
-    dftest=sm.tsa.adfuller(series.dropna(), autolag='AIC', regression='ct')
-    for key,val in dftest[4].items():
-        dfout[f'critical value ({key})']=val
-    if dftest[1]<=0.05:
-        print("Strong evidence against Null Hypothesis")
-        print("Reject Null Hypothesis - Data is Stationary")
-        print("Data is Stationary", title)
-    else:
-        print("Strong evidence for  Null Hypothesis")
-        print("Accept Null Hypothesis - Data is not Stationary")
-        print("Data is NOT Stationary for", title)
+# Prediction: CV Test
+pred = results.get_prediction(start=pd.to_datetime('1968-01-01'), dynamic=False)
+#print(type(pred)) #PredictionResultsWrapper
+ax = series['1964':].plot(label='observed')
+pred.predicted_mean.plot(ax=ax, label='One-step ahead Forecast', 
+                         alpha=.7, figsize=(14, 4))
+pred_ci = pred.conf_int()
+ax.fill_between(pred_ci.index,
+                pred_ci.iloc[:, 0],
+                pred_ci.iloc[:, 1], color='k', alpha=.2)
+ax.set_xlabel('Date')
+ax.set_ylabel('champagne_sold')
+plt.legend()
+plt.show()
 
 
-y_test=y['Stock Price next day'][:train_size].dropna()
-test_adf(y_test, " Stock Price")
-test_adf(y_test.diff(), 'Stock Price') # i diff for making stationary
+# RMSE, RMS, & MAPE
+forecast_cv = pred.predicted_mean
+actual_cv = series['1968-01-01':]
+mape = np.mean(np.abs(forecast_cv - actual_cv)/np.abs(actual_cv))  # MAPE
+mse = ((forecast_cv - actual_cv) ** 2).mean()
+print('The MAPE is {}'.format(round(mape, 2)))
+print('The Mean Squared Error is {}'.format(round(mse, 2)))
+print('The Root Mean Squared Error is {}'.format(round(np.sqrt(mse), 2)))
 
-# Building the Model
-from pmdarima.arima import auto_arima
-#step_wise=auto_arima(train_y, 
-#                     exogenous= train_X,
-#                     start_p=1, start_q=1, 
-#                     max_p=7, max_q=7, 
-#                     d=1, max_d=7,
-#                     trace=True, 
-#                     error_action='ignore', 
-#                     suppress_warnings=True, 
-#                     stepwise=True)
-#step_wise.summary()
-
-
-# Auto_arima suggests a SARIMAX with order=(0,1,1). So we use it:
-from statsmodels.tsa.statespace.sarimax import SARIMAX
-model= SARIMAX(train_y, exog=train_X, order=(0,1,1),
-               enforce_invertibility=False, enforce_stationarity=False)
-results= model.fit()
-predictions= results.predict(start =train_size, 
-                             end=train_size+test_size+(steps)-1,
-                             exog=test_X)
-
-forecast_1= results.forecast(steps=test_size-1, exog=test_X)
-#Steps is an integer value that specifies the number of steps to 
-#forecast from the end of the sample.
-
-
-# Plot the predictions
-act = pd.DataFrame(scaler_output.iloc[train_size:, 0])
-predictions=pd.DataFrame(predictions)
-predictions.reset_index(drop=True, inplace=True)
-predictions.index=test_X.index
-predictions['Actual'] = act['Stock Price next day']
-predictions.rename(columns={0:'Pred'}, inplace=True)
-
-predictions['Actual'].plot(figsize=(20,8), legend=True, color='blue')
-predictions['Pred'].plot(legend=True, color='red', figsize=(20,8))
-
-
-forecast_apple= pd.DataFrame(forecast_1)
-forecast_apple.reset_index(drop=True, inplace=True)
-forecast_apple.index=test_X.index
-forecast_apple['Actual'] =scaler_output.iloc[train_size:, 0]
-forecast_apple.rename(columns={0:'Forecast'}, inplace=True)
-forecast_apple['Forecast'].plot(legend=True)
-forecast_apple['Actual'].plot(legend=True)
-
-
-# Evaluating the Model
-from statsmodels.tools.eval_measures import rmse
-error=rmse(predictions['Pred'], predictions['Actual'])
-print (error)
-
-
-# Scaling back to original values
-trainPredict = sc_out.inverse_transform(predictions[['Pred']])
-testPredict = sc_out.inverse_transform(predictions[['Actual']])
+forecast_cv = pred.predicted_mean
+print('\n\n\n forecast_cv.head(12):\n',forecast_cv.head(12))
+print('\n\n\n actual_cv.head(12):\n', actual_cv.head(12))
 
 
 
+# Forcast next 12 month
+pred_uc = results.get_forecast(steps=12)
+pred_ci = pred_uc.conf_int()
+ax = series.plot(label='observed', figsize=(14, 4))
+pred_uc.predicted_mean.plot(ax=ax, label='Forecast')
+ax.fill_between(pred_ci.index,
+                pred_ci.iloc[:, 0],
+                pred_ci.iloc[:, 1], color='k', alpha=.25)
+ax.set_xlabel('Date')
+ax.set_ylabel('Sales')
+plt.legend()
+plt.show()
 
+print('\n\n\n pred_ci.head(24):\n', pred_ci.head(24))
+forecast = pred_uc.predicted_mean
+print('\n\n\n forecast.head(12)', forecast.head(12))
 
-
-
-
-
+fc = forecast.values[-12:]
+print('\n\n\n forecast.tail(12)', fc)
+pr = forecast_cv.values[-12:]
+ac = actual_cv.values[-12:]
+print('\n\n\n forecast_cv.tail(12):\n',pr)
+print('\n\n\n actual_cv.tail(12):\n', ac)
 
