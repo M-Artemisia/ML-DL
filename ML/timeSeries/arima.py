@@ -47,7 +47,7 @@ def plot_simple(series):
     
     import matplotlib.pyplot as plt
     plt.xlabel('Time')
-    plt.ylable('sale')
+    plt.ylabel('sale')
     plt.title('Line Plot')
     series.plot(style='k-')
     plt.show()
@@ -58,12 +58,12 @@ def plot_simple(series):
     plt.figure(1)
     plt.subplot(211)
     plt.xlabel('Time')
-    plt.ylable('sale')
+    plt.ylabel('sale')
     plt.title('Histogram Plot')
     series.hist()
     plt.subplot(212)
     plt.xlabel('Time')
-    plt.ylable('sale')
+    plt.ylabel('sale')
     plt.title('Gaussian Plot')
     series.plot(kind='kde')
     plt.show()
@@ -77,7 +77,7 @@ def plot_seasonal_box(series, start, end, freq='A'):
     #years.plot(subplots=True, legend = False)
     years.plot()
     plt.xlabel('Time')
-    plt.ylable('sale')
+    plt.ylabel('sale')
     plt.title('Seasonal Plot')
     plt.show()
 
@@ -94,21 +94,22 @@ def plot_sesonalDecompose(series):
     plt.rcParams.update({'figure.figsize': (10,10)})
     plt.title('Seasonal Decompose Plot')
     plt.xlabel('Time')
-    plt.ylable('sale')
+    plt.ylabel('sale')
     result_mul.plot().suptitle('Multiplicative Decompose', fontsize=22)
     result_add.plot().suptitle('Additive Decompose', fontsize=22)
     plt.show()
     
-def plot_lag_correlation(series, lag=1):
+def plot_lag(series, lag=1):
     plt.xlabel('Time')
-    plt.ylable('sale')
+    plt.ylabel('sale')
     plt.title('Lag Scatter')
     lag_plot(series, lag)
     plt.show() 
 
+def plot_correlation(series, lag=1): 
     plt.figure()
     plt.xlabel('Time')
-    plt.ylable('sale')
+    plt.ylabel('sale')
     plt.subplot(211)
     plt.title('ACF: Pearson Correlation Coefficients')
     plot_acf(series, ax=plt.gca())
@@ -116,24 +117,23 @@ def plot_lag_correlation(series, lag=1):
     plt.subplot(212)
     #plot_pacf(series, lags=lag, ax=plt.gca())
     plt.title('Partial ACF')
-    plot_pacf(series, ax=plt.gca())
-    
+    plot_pacf(series, ax=plt.gca())    
     plt.show()
 
 def plot_sets_results(train, test, predictions):
     plt.xlabel('Time')
-    plt.ylable('sale')
+    plt.ylabel('sale')
     plt.title('Test & Prediction Set')
     plt.plot(test)
     plt.plot(predictions, color='red')
     plt.show()
 
     plt.xlabel('Time')
-    plt.ylable('sale')
+    plt.ylabel('sale')
     plt.title('Train, Test & Prediction Set')
     plt.plot(train)
-    plt.plot([None for i in train] + [x for x in test])
-    plt.plot([None for i in train] + [x for x in predictions])
+    plt.plot([None for i in train] + [x for x in test],label='original')
+    plt.plot([None for i in train] + [x for x in predictions], label='predicted')
     plt.show()
     
 def plot_Residuals(test, predictions):
@@ -142,7 +142,7 @@ def plot_Residuals(test, predictions):
     print(residuals.describe())
     plt.figure()
     plt.xlabel('Time')
-    plt.ylable('sale')
+    plt.ylabel('sale')
     plt.title('Residual Graph (between Test & Prediction)')
     plt.subplot(221)
     residuals.hist(ax=plt.gca())
@@ -159,7 +159,7 @@ def load_data(path):
     #from pandas import read_csv
     series = pd.read_csv(path, header=0, parse_dates=True, index_col=0, squeeze=True)
     print('Series length=%d' % len(series))
-    print('Series info:', series.inf)
+    #print('Series info:', series.info)
     print ('2 first and 2 last lines of data:\n', series.head(2), series.tail(2))
     return series
 
@@ -169,6 +169,19 @@ def split_set(series, split_percentage, filename1, filename2):
     set1.to_csv(filename1 , header=False)
     set2.to_csv(filename2, header=False)
     return set1, set2
+
+def split_set2(series, train_prcnt, test_prcnt):
+    size = int(len(series))
+    train_index = int(size*train_prcnt)
+    test_index = train_index + int(size*test_prcnt)
+    train= series[0:train_index]
+    test = series[train_index:test_index] 
+    cv = series[test_index:]
+        
+    train.to_csv('train.csv' , header=False)
+    test.to_csv('test.csv', header=False)
+    cv.to_csv('validation.csv', header=False)
+    return train, test, validation
 
 def prepare_data(series):
     return series.values.astype('float32')
@@ -199,8 +212,7 @@ def forecast_accuracy(forecast, actual):
 #forecast_accuracy(fc, test.values)
 
 #*************************STEP3: Data Preparation*************************
-def check_stationary(data, epsilon=0.05):   
-    
+def check_stationary(data, epsilon=0.05):      
     rolmean = pd.Series(data).rolling(window=12).mean()
     rolstd = pd.Series(data).rolling(window=12).std()
 
@@ -234,32 +246,39 @@ def make_stationary(train,difference_intervals):
     stationary.index = Series(train).index[difference_intervals:]
     if not check_stationary(stationary):
         print('It is still Not stationary. pls add more intervals!')
-    plot_lag_correlation(stationary)
+    plot_correlation(stationary)
     stationary.plot()
     plt.show()
     return
 
-def make_stationary_method(data, intervals, method="diff",
-                           filename='stationary.csv'):
+def make_stationary_method(data, intervals, method="diff", fname='stationary.csv'):
     if method=='MA': 
-        moving_avg = pd.Series(data).rolling(window).mean()
+        moving_avg = pd.Series(data).rolling(interval).mean()
         stat_data = data - moving_avg
         stat_data.dropna(inplace=True) # first 6 is nan value due to window size            
     else:
         stat_data = data - data.shift()
 
     if check_stationary(stat_data):
-        stationary.to_csv(filename, header=False)
+        stationary.to_csv(fname, header=False)
     else:
         print('It is still Not stationary!')
     
-    plot_lag_correlation(stat_data )
-    stat_data .plot()
+    plot_correlation(stat_data )
+    plt.xlabel('Time')
+    plt.ylabel('sale')
+    plt.title('The made stationary data')
+    stat_data.plot()
     plt.show()
     return stat_data 
     
 
 # *************************STEP4: Model Training*************************
+# Persistence, Baseline, Naive:
+def baseline_predict(history):
+    yhat = history[-1]
+    return yhat
+
 def model_evaluation(train, test, predict_model='baseline', order=(1,0,0), 
                      stationary=False, interval=1, bias=0):
     # walk-forward validation
@@ -278,16 +297,8 @@ def model_evaluation(train, test, predict_model='baseline', order=(1,0,0),
         obs = test[i]                   # observation
         history.append(obs)  
         #print('>Predicted=%.3f, Expected=%3.f' % (yhat, obs))
-
-    # report performance
-    #rmse = model_evaluation_perf_measure(test, predictions)
     acc = forecast_accuracy(predictions, test )
     return acc, predictions 
-
-# Persistence, Baseline, Naive:
-def baseline_predict(history):
-    yhat = history[-1]
-    return yhat
 
 # ARIMA:
 def arima_predict(history, arima_order, stationary=False, interval=1, bias=0):    
@@ -304,35 +315,49 @@ def arima_predict(history, arima_order, stationary=False, interval=1, bias=0):
         yhat = bias + output[0]
     return yhat
 
+def fitted_predict(dataset, order=(1,0,0), interval=1, bias=0,step=1):
+    # walk-forward validation
+    history = [x for x in dataset]
+    predictions = list()
+    for i in range(step):
+        #model_fit = ARIMAResults.load(model)
+        #bias = np.load(bias)
+        #output = model_fit.forecast()
+        model = ARIMA(difference(history, interval), order)
+        model_fit = model.fit(trend='nc', disp=0)
+        output = model_fit.forecast()
+        
+        yhat = output[0] 
+        yhat = bias + inverse_difference(history, yhat, interval)
+        predictions.append(yhat)
+        history.append(yhat)  
+    return predictions 
+    
+
+
+
 def arima_fitted_predict(dataset, model, bias, stationary=False, interval=1, step=1):    
     model_fit = ARIMAResults.load(model)
     bias = np.load(bias)
-    output = model_fit.forecast(step)[0]
+    output = model_fit.forecast()
+    print('output type is:',type(output))
+    print('output is:',output)
+    output = output[0]
+    print('output[0] type is:',type(output))
+    print('output[0] is:',output)
     yhat=list()
     if stationary and step>1:
         for prd in output:
-            yhat.append(bias + 
-                        inverse_difference(dataset, float(prd),interval))
+            print('prd in output is: ',prd)
+            yhat.append(bias+inverse_difference(dataset, float(prd),interval))
     elif stationary and step==1:
         yhat.append(bias + 
                     inverse_difference(dataset, float(output),interval))
     else:
         yhat.append(bias + output)
     print('yhat type is: ', type(yhat))
-    
-    # visualization
-    plt.figure(figsize=(22,10))
-    plt.plot(dataset.values[-step:], label = "original")
-    plt.plot(yhat,label = "predicted")
-    plt.title("Time Series Forecast-Fitted Predict")
-    plt.xlabel("Date")
-    plt.ylabel("Sale")
-    plt.legend()
-    plt.show()
-
     return yhat
-
-        
+       
 def new_predict(data, start_index, end_index, model):
     model_fit = ARIMAResults.load(model)    
     my_forecast = model_fit.predict(start=start_index, end=end_index)
@@ -358,7 +383,7 @@ def new_forcecast(data, model):
     # visualization
     plt.figure(figsize=(22,10))
     plt.plot(data.values,label = "original")
-    plt.plot(my_forecast+12,label = "predicted")
+    plt.plot(my_forecast,label = "predicted")
     plt.title("Time Series Forecast-NEW Forcast")
     plt.xlabel("Date")
     plt.ylabel("Sale")
@@ -417,8 +442,8 @@ def validate_model(data, validation,
                                          interval,np.load('model_bias.npy'))
 
     final_predictions.extend(predictions)
-    plt.plot(y.values)
-    plt.plot(final_predictions, color='red')
+    plt.plot(y.values,label='Validation-Actual')
+    plt.plot(final_predictions, color='red', label='Validatin-Prediction')
     plt.show()
     return predictions
     
@@ -439,7 +464,8 @@ def finalize_model(data, interval=1,arima_order=(1,0,0), bias=0,
     
     # Actual vs Fitted
     print('fitted model summary:\n\n', model_fit.summary())
-    model_fit.plot_predict(dynamic=False)
+    #model_fit.plot_predict(dynamic=False)
+    #plt.title('model_fit.plot_predict')
     plt.show()
 
     # save model
@@ -456,14 +482,18 @@ def finalize_model(data, interval=1,arima_order=(1,0,0), bias=0,
 #***************************************************************************
 
 # Step1: Load And Analyse data     
-path = "datasets/monthly_champagne_sales.csv"
+#path = "datasets/monthly_champagne_sales.csv"
+#path = "datasets/filtered_sample_output.csv"
+path = "datasets/filtered_train_data.csv"
+data = pd.read_csv(path)
+print(data.info())
 series = load_data(path)
 #plot_simple(series)
 #plot_sesonalDecompose(series)
 #plot_lag_correlation(series,1)
 #plot_seasonal_box(series,'1964', '1970', freq='A')
 
-
+"""
 #Step2: Create train, cv, test sets
 data, validation = split_set(series, 0.89, 'dataset.csv', 'validation.csv')
 print('Dataset %d, Validation %d' % (len(data), len(validation)))
@@ -509,31 +539,31 @@ bias = 165.90
 finalize_model(data, interval, best_cfg, bias,'model.pkl','model_bias.npy')
 
 #Step8: Make prediction
-
 # New predict
-print('\n\n\n befor new predict\n\n\n')
-new_predict(data, 75, 93, 'model.pkl')
-new_forcecast(data, 'model.pkl')
+#print('\n\n\n befor new predict\n\n\n')
+#new_predict(data, 75, 93, 'model.pkl')
+#new_forcecast(data, 'model.pkl')
 
+step = 20
+#fc = arima_fitted_predict(data, 'model.pkl', 'model_bias.npy', 
+#                            stationary, interval, step)
+fc = fitted_predict( data, (1,0,0), interval, bias, step)
+# visualization
+plt.plot(data.values, label = "original")
+plt.plot([None for i in data.values]+ [x for x in fc],label = "Forecast")
+plt.title('Time Series Forecast. Fitted_Predict_Func. %d steps' % step)
+plt.xlabel("Date")
+plt.ylabel("Sale")
+plt.show()
+    
+#fc = [i[0] for i in fc]
 
-
-
-fc = arima_fitted_predict(data, 'model.pkl', 'model_bias.npy', 
-                             stationary, interval, step=20)
-fc = [i[0] for i in fc]
 #Step9: Validate Model
-
 pred = validate_model(data, validation, 'ARIMA',(0,0,1), stationary, interval,
               'model.pkl','model_bias.npy')
 pred = [i[0] for i in pred]
+#plot_sets_results(data, validation, pred)
 
-
-
-
-"""
-pred = validate_model(data, validation, 'ARIMA',(0,0,1), stationary, interval,
-              'model.pkl','model_bias.npy')
-pred = [i[0] for i in pred]
 
 
 
